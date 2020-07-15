@@ -214,7 +214,7 @@ class Trainer:
             tf.summary.image('train/input_img', images,)
         avg_step_count = 0
         for trajectory in trajectories:
-            avg_step_count += len(trajectories['obs'])
+            avg_step_count += len(trajectory['obs'])
         avg_step_count /= len(trajectories)
         return avg_test_return / self._test_episodes, trajectories, avg_step_count
 
