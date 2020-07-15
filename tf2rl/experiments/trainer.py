@@ -132,11 +132,18 @@ class Trainer:
                         samples["indexes"], np.abs(td_error) + 1e-6)
 
             if total_steps % self._test_interval == 0:
-                avg_test_return = self.evaluate_policy(total_steps)
+                avg_test_return, trajectories = self.evaluate_policy(total_steps)
+                average_step_count = 0
+                for trajectory in trajectories:
+                    average_step_count += len(trajectories['obs'])
+                average_step_count /= len(trajectories)
                 self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
                     total_steps, avg_test_return, self._test_episodes))
                 tf.summary.scalar(
                     name="Common/average_test_return", data=avg_test_return)
+                tf.summary.scalar(name="Common/fps", data=fps)
+                tf.summary.scalar(
+                    name="Common/average_step_count", data=average_step_count)
                 tf.summary.scalar(name="Common/fps", data=fps)
                 self.writer.flush()
 
@@ -168,9 +175,10 @@ class Trainer:
             self._test_env.normalizer.set_params(
                 *self._env.normalizer.get_params())
         avg_test_return = 0.
-        if self._save_test_path:
-            replay_buffer = get_replay_buffer(
-                self._policy, self._test_env, size=self._episode_max_steps)
+        replay_buffer = get_replay_buffer(
+            self._policy, self._test_env, size=self._episode_max_steps)
+        current_trajectory_points = 0
+        trajectories = []
         for i in range(self._test_episodes):
             episode_return = 0.
             frames = []
@@ -178,9 +186,8 @@ class Trainer:
             for _ in range(self._episode_max_steps):
                 action = self._policy.get_action(obs, test=True)
                 next_obs, reward, done, _ = self._test_env.step(action)
-                if self._save_test_path:
-                    replay_buffer.add(obs=obs, act=action,
-                                      next_obs=next_obs, rew=reward, done=done)
+                replay_buffer.add(obs=obs, act=action,
+                                    next_obs=next_obs, rew=reward, done=done)
 
                 if self._save_test_movie:
                     frames.append(self._test_env.render(mode='rgb_array'))
@@ -188,14 +195,19 @@ class Trainer:
                     self._test_env.render()
                 episode_return += reward
                 obs = next_obs
+                current_trajectory_points += 1
+
                 if done:
                     break
             prefix = "step_{0:08d}_epi_{1:02d}_return_{2:010.4f}".format(
                 total_steps, i, episode_return)
             if self._save_test_path:
-                save_path(replay_buffer._encode_sample(np.arange(self._episode_max_steps)),
+                save_path(replay_buffer._encode_sample(np.arange(current_trajectory_points)),
                           os.path.join(self._output_dir, prefix + ".pkl"))
-                replay_buffer.clear()
+            trajectories.append(replay_buffer._encode_sample(np.arange(current_trajectory_points))
+            replay_buffer.clear()
+            current_trajectory_points = 0
+
             if self._save_test_movie:
                 frames_to_gif(frames, prefix, self._output_dir)
             avg_test_return += episode_return
@@ -204,7 +216,7 @@ class Trainer:
                 tf.expand_dims(np.array(obs).transpose(2, 0, 1), axis=3),
                 tf.uint8)
             tf.summary.image('train/input_img', images,)
-        return avg_test_return / self._test_episodes
+        return avg_test_return / self._test_episodes, trajectories
 
     def _set_from_args(self, args):
         # experiment settings
