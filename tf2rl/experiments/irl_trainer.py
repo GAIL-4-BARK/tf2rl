@@ -113,13 +113,15 @@ class IRLTrainer(Trainer):
                                 expert_next_states=self._expert_next_obs[indices])
 
                 if total_steps % self._test_interval == 0:
-                    avg_test_return = self.evaluate_policy(total_steps)
-                    self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
-                        total_steps, avg_test_return, self._test_episodes))
+                    avg_test_return, trajectories, avg_step_count = self.evaluate_policy(total_steps)
+                    
+                    self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} / Average Step Count {2: 2} over {3: 2} episodes".format(
+                        total_steps, avg_test_return, avg_step_count, self._test_episodes))
                     tf.summary.scalar(
                         name="Common/average_test_return", data=avg_test_return)
+                    tf.summary.scalar(name="Common/fps", data=fps)
                     tf.summary.scalar(
-                        name="Common/fps", data=fps)
+                        name="Common/average_step_count", data=avg_step_count)
                     self.writer.flush()
 
                 if total_steps % self._save_model_interval == 0:

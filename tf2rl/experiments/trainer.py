@@ -132,19 +132,15 @@ class Trainer:
                         samples["indexes"], np.abs(td_error) + 1e-6)
 
             if total_steps % self._test_interval == 0:
-                avg_test_return, trajectories = self.evaluate_policy(total_steps)
-                average_step_count = 0
-                for trajectory in trajectories:
-                    average_step_count += len(trajectories['obs'])
-                average_step_count /= len(trajectories)
-                self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} over {2: 2} episodes".format(
-                    total_steps, avg_test_return, self._test_episodes))
+                avg_test_return, trajectories, avg_step_count = self.evaluate_policy(total_steps)
+                
+                self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} / Average Step Count {2: 2} over {3: 2} episodes".format(
+                    total_steps, avg_test_return, avg_step_count, self._test_episodes))
                 tf.summary.scalar(
                     name="Common/average_test_return", data=avg_test_return)
                 tf.summary.scalar(name="Common/fps", data=fps)
                 tf.summary.scalar(
-                    name="Common/average_step_count", data=average_step_count)
-                tf.summary.scalar(name="Common/fps", data=fps)
+                    name="Common/average_step_count", data=avg_step_count)
                 self.writer.flush()
 
             if total_steps % self._save_model_interval == 0:
@@ -216,7 +212,11 @@ class Trainer:
                 tf.expand_dims(np.array(obs).transpose(2, 0, 1), axis=3),
                 tf.uint8)
             tf.summary.image('train/input_img', images,)
-        return avg_test_return / self._test_episodes, trajectories
+        avg_step_count = 0
+        for trajectory in trajectories:
+            avg_step_count += len(trajectories['obs'])
+        avg_step_count /= len(trajectories)
+        return avg_test_return / self._test_episodes, trajectories, avg_step_count
 
     def _set_from_args(self, args):
         # experiment settings
