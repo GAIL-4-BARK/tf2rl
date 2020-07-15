@@ -204,7 +204,7 @@ class Trainer:
             if self._save_test_path:
                 save_path(replay_buffer._encode_sample(np.arange(current_trajectory_points)),
                           os.path.join(self._output_dir, prefix + ".pkl"))
-            trajectories.append(replay_buffer._encode_sample(np.arange(current_trajectory_points))
+            trajectories.append(replay_buffer._encode_sample(np.arange(current_trajectory_points)))
             replay_buffer.clear()
             current_trajectory_points = 0
 
