@@ -55,7 +55,7 @@ class IRLTrainer(Trainer):
                 episode_steps += 1
                 episode_return += reward
                 total_steps += 1
-                tf.summary.experimental.set_step(total_steps)
+                tf.summary.experimental.set_step(n_episode)
 
                 done_flag = done
                 if hasattr(self._env, "_max_episode_steps") and \
