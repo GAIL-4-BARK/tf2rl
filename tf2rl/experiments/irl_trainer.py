@@ -30,11 +30,11 @@ class IRLTrainer(Trainer):
 
     def __call__(self):
         total_steps = 0
-        tf.summary.experimental.set_step(total_steps)
         episode_steps = 0
         episode_return = 0
         episode_start_time = time.perf_counter()
         n_episode = 0
+        tf.summary.experimental.set_step(n_episode)
 
         replay_buffer = get_replay_buffer(
             self._policy, self._env, self._use_prioritized_rb,
@@ -114,6 +114,7 @@ class IRLTrainer(Trainer):
 
                 if total_steps % self._test_interval == 0:
                     avg_test_return, trajectories, avg_step_count = self.evaluate_policy(total_steps)
+                    tf.summary.experimental.set_step(n_episode)
                     
                     self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} / Average Step Count {2: 2} over {3: 2} episodes".format(
                         total_steps, avg_test_return, avg_step_count, self._test_episodes))
