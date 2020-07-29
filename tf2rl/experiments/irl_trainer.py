@@ -112,7 +112,7 @@ class IRLTrainer(Trainer):
                             expert_next_states=self._expert_next_obs[indices])
 
             if n_episode % self._test_interval == 0:
-                avg_test_return, trajectories, avg_step_count = self.evaluate_policy(n_episode)
+                avg_test_return, trajectories, avg_step_count, _ = self.evaluate_policy(n_episode)
                 tf.summary.experimental.set_step(n_episode)
                 
                 self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} / Average Step Count {2: 2} over {3: 2} episodes".format(
