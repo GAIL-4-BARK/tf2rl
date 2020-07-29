@@ -42,93 +42,92 @@ class IRLTrainer(Trainer):
 
         obs = self._env.reset()
 
-        while total_steps < self._max_steps:
-            while total_steps < self._max_steps:
-                if total_steps < self._policy.n_warmup:
-                    action = self._env.action_space.sample()
-                else:
-                    action = self._policy.get_action(obs)
+        while n_episode < self._max_steps:
+            if total_steps < self._policy.n_warmup:
+                action = self._env.action_space.sample()
+            else:
+                action = self._policy.get_action(obs)
 
-                next_obs, reward, done, _ = self._env.step(action)
-                if self._show_progress:
-                    self._env.render()
-                episode_steps += 1
-                episode_return += reward
-                total_steps += 1
-                tf.summary.experimental.set_step(n_episode)
+            next_obs, reward, done, _ = self._env.step(action)
+            if self._show_progress:
+                self._env.render()
+            episode_steps += 1
+            episode_return += reward
+            total_steps += 1
+            tf.summary.experimental.set_step(n_episode)
 
-                done_flag = done
-                if hasattr(self._env, "_max_episode_steps") and \
-                        episode_steps == self._env._max_episode_steps:
-                    done_flag = False
-                replay_buffer.add(obs=obs, act=action,
-                                  next_obs=next_obs, rew=reward, done=done_flag)
-                obs = next_obs
+            done_flag = done
+            if hasattr(self._env, "_max_episode_steps") and \
+                    episode_steps == self._env._max_episode_steps:
+                done_flag = False
+            replay_buffer.add(obs=obs, act=action,
+                                next_obs=next_obs, rew=reward, done=done_flag)
+            obs = next_obs
 
-                if done or episode_steps == self._episode_max_steps:
-                    obs = self._env.reset()
+            if done or episode_steps == self._episode_max_steps:
+                obs = self._env.reset()
 
-                    n_episode += 1
-                    fps = episode_steps / (time.perf_counter() - episode_start_time)
-                    self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Return: {3: 5.4f} FPS: {4:5.2f}".format(
-                        n_episode, int(total_steps), episode_steps, episode_return, fps))
-                    tf.summary.scalar(
-                        name="Common/training_return", data=episode_return)
+                n_episode += 1
+                fps = episode_steps / (time.perf_counter() - episode_start_time)
+                self.logger.info("Total Epi: {0: 5} Steps: {1: 7} Episode Steps: {2: 5} Return: {3: 5.4f} FPS: {4:5.2f}".format(
+                    n_episode, int(total_steps), episode_steps, episode_return, fps))
+                tf.summary.scalar(
+                    name="Common/training_return", data=episode_return)
 
-                    episode_steps = 0
-                    episode_return = 0
-                    episode_start_time = time.perf_counter()
+                episode_steps = 0
+                episode_return = 0
+                episode_start_time = time.perf_counter()
 
-                if total_steps < self._policy.n_warmup:
-                    continue
+            if total_steps < self._policy.n_warmup:
+                continue
 
-                if total_steps % self._policy.update_interval == 0:
-                    samples = replay_buffer.sample(self._policy.batch_size)
-                    # Train policy
-                    rew = self._irl.inference(samples["obs"], samples["act"], samples["next_obs"])
-                    with tf.summary.record_if(total_steps % self._save_summary_interval == 0):
-                        self._policy.train(
+            if total_steps % self._policy.update_interval == 0:
+                samples = replay_buffer.sample(self._policy.batch_size)
+                # Train policy
+                rew = self._irl.inference(samples["obs"], samples["act"], samples["next_obs"])
+                with tf.summary.record_if(total_steps % self._save_summary_interval == 0):
+                    self._policy.train(
+                        samples["obs"], samples["act"], samples["next_obs"],
+                        rew, samples["done"],
+                        None if not self._use_prioritized_rb else samples["weights"])
+                    if self._use_prioritized_rb:
+                        td_error = self._policy.compute_td_error(
                             samples["obs"], samples["act"], samples["next_obs"],
-                            rew, samples["done"],
-                            None if not self._use_prioritized_rb else samples["weights"])
-                        if self._use_prioritized_rb:
-                            td_error = self._policy.compute_td_error(
-                                samples["obs"], samples["act"], samples["next_obs"],
-                                rew, samples["done"])
-                            replay_buffer.update_priorities(
-                                samples["indexes"], np.abs(td_error) + 1e-6)
+                            rew, samples["done"])
+                        replay_buffer.update_priorities(
+                            samples["indexes"], np.abs(td_error) + 1e-6)
 
-                        # Train IRL
-                        for _ in range(self._irl.n_training):
-                            samples = replay_buffer.sample(self._irl.batch_size)
-                            # Do not allow duplication!!!
-                            indices = np.random.choice(
-                                self._random_range, self._irl.batch_size, replace=False)
-                            self._irl.train(
-                                agent_states=samples["obs"],
-                                agent_acts=samples["act"],
-                                agent_next_states=samples["next_obs"],
-                                expert_states=self._expert_obs[indices],
-                                expert_acts=self._expert_act[indices],
-                                expert_next_states=self._expert_next_obs[indices])
+                    # Train IRL
+                    for _ in range(self._irl.n_training):
+                        samples = replay_buffer.sample(self._irl.batch_size)
+                        # Do not allow duplication!!!
+                        indices = np.random.choice(
+                            self._random_range, self._irl.batch_size, replace=False)
+                        self._irl.train(
+                            agent_states=samples["obs"],
+                            agent_acts=samples["act"],
+                            agent_next_states=samples["next_obs"],
+                            expert_states=self._expert_obs[indices],
+                            expert_acts=self._expert_act[indices],
+                            expert_next_states=self._expert_next_obs[indices])
 
-                if n_episode % self._test_interval == 0:
-                    avg_test_return, trajectories, avg_step_count = self.evaluate_policy(n_episode)
-                    tf.summary.experimental.set_step(n_episode)
-                    
-                    self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} / Average Step Count {2: 2} over {3: 2} episodes".format(
-                        total_steps, avg_test_return, avg_step_count, self._test_episodes))
-                    tf.summary.scalar(
-                        name="Common/average_test_return", data=avg_test_return)
-                    tf.summary.scalar(name="Common/fps", data=fps)
-                    tf.summary.scalar(
-                        name="Common/average_step_count", data=avg_step_count)
-                    self.writer.flush()
+            if n_episode % self._test_interval == 0:
+                avg_test_return, trajectories, avg_step_count = self.evaluate_policy(n_episode)
+                tf.summary.experimental.set_step(n_episode)
+                
+                self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} / Average Step Count {2: 2} over {3: 2} episodes".format(
+                    total_steps, avg_test_return, avg_step_count, self._test_episodes))
+                tf.summary.scalar(
+                    name="Common/average_test_return", data=avg_test_return)
+                tf.summary.scalar(name="Common/fps", data=fps)
+                tf.summary.scalar(
+                    name="Common/average_step_count", data=avg_step_count)
+                self.writer.flush()
 
-                if total_steps % self._save_model_interval == 0:
-                    self.checkpoint_manager.save()
+            if total_steps % self._save_model_interval == 0:
+                self.checkpoint_manager.save()
 
-            tf.summary.flush()
+        tf.summary.flush()
 
     @staticmethod
     def get_argument(parser=None):
