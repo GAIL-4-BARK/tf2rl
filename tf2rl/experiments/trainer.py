@@ -132,7 +132,7 @@ class Trainer:
                         samples["indexes"], np.abs(td_error) + 1e-6)
 
             if total_steps % self._test_interval == 0:
-                avg_test_return, trajectories, avg_step_count = self.evaluate_policy(total_steps)
+                avg_test_return, trajectories, avg_step_count, _ = self.evaluate_policy(total_steps)
                 
                 self.logger.info("Evaluation Total Steps: {0: 7} Average Reward {1: 5.4f} / Average Step Count {2: 2} over {3: 2} episodes".format(
                     total_steps, avg_test_return, avg_step_count, self._test_episodes))
@@ -175,13 +175,14 @@ class Trainer:
             self._policy, self._test_env, size=self._episode_max_steps)
         current_trajectory_points = 0
         trajectories = []
+        infos = []
         for i in range(self._test_episodes):
             episode_return = 0.
             frames = []
             obs = self._test_env.reset()
             for _ in range(self._episode_max_steps):
                 action = self._policy.get_action(obs, test=True)
-                next_obs, reward, done, _ = self._test_env.step(action)
+                next_obs, reward, done, info = self._test_env.step(action)
                 replay_buffer.add(obs=obs, act=action,
                                     next_obs=next_obs, rew=reward, done=done)
 
@@ -201,6 +202,7 @@ class Trainer:
                 save_path(replay_buffer._encode_sample(np.arange(current_trajectory_points)),
                           os.path.join(self._output_dir, prefix + ".pkl"))
             trajectories.append(replay_buffer._encode_sample(np.arange(current_trajectory_points)))
+            infos.append(info)
             replay_buffer.clear()
             current_trajectory_points = 0
 
@@ -216,7 +218,7 @@ class Trainer:
         for trajectory in trajectories:
             avg_step_count += len(trajectory['obs'])
         avg_step_count /= len(trajectories)
-        return avg_test_return / self._test_episodes, trajectories, avg_step_count
+        return avg_test_return / self._test_episodes, trajectories, avg_step_count, infos
 
     def _set_from_args(self, args):
         # experiment settings
